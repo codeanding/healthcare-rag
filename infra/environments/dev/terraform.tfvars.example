@@ -1,0 +1,23 @@
+# Copy this to terraform.tfvars and edit. terraform.tfvars is gitignored.
+
+aws_region  = "us-west-2"
+aws_profile = "codeanding"
+
+name_prefix = "aws-rag-dev"
+
+# Must be globally unique. Pick something with your handle so it doesn't collide.
+documents_bucket_name          = "codeanding-aws-rag-dev-docs"
+documents_bucket_force_destroy = true # OK in dev — change to false before prod
+
+# Bumping this triggers ECS to redeploy after you push a new image with a new tag.
+# Easier in practice: keep "latest" and run `aws ecs update-service --force-new-deployment`.
+image_tag = "latest"
+
+vpc_cidr = "10.20.0.0/16"
+az_count = 2
+
+# Bedrock — keep the same region as the rest unless your secondary account has
+# access in a different region. The actual access keys go into Secrets Manager
+# AFTER first apply (see README).
+bedrock_aws_region   = "us-west-2"
+bedrock_llm_model_id = "us.anthropic.claude-sonnet-4-6"

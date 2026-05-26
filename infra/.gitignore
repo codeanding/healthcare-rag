@@ -1,0 +1,13 @@
+# Terraform local state (bootstrap uses local state by design)
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+
+# Terraform working dirs
+.terraform/
+.terraform.lock.hcl
+
+# tfvars contain secrets / account-specific values
+terraform.tfvars
+*.auto.tfvars
