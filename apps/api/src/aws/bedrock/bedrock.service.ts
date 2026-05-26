@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   BedrockRuntimeClient,
-  type BedrockRuntimeClientConfig,
   ConverseCommand,
   type ConverseCommandInput,
   type ConverseCommandOutput,
@@ -10,7 +9,6 @@ import {
   type ConverseStreamCommandOutput,
   InvokeModelCommand,
 } from '@aws-sdk/client-bedrock-runtime';
-import { fromIni } from '@aws-sdk/credential-providers';
 import {
   DEFAULT_AWS_REGION,
   DEFAULT_EMBEDDING_DIMENSIONS,
@@ -19,36 +17,14 @@ import {
 } from './bedrock.constants';
 import type { TitanEmbeddingResponse } from './bedrock.types';
 
-// Bedrock can run against a separate AWS account (e.g. one with model access
-// granted) by setting BEDROCK_AWS_*. Falls back to the app-wide AWS_* /
-// AWS_PROFILE chain when those aren't set.
-function buildBedrockClientConfig(): BedrockRuntimeClientConfig {
-  const config: BedrockRuntimeClientConfig = {
-    region: process.env.BEDROCK_AWS_REGION ?? process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
-  };
-
-  const accessKeyId = process.env.BEDROCK_AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.BEDROCK_AWS_SECRET_ACCESS_KEY;
-  if (accessKeyId && secretAccessKey) {
-    config.credentials = {
-      accessKeyId,
-      secretAccessKey,
-      sessionToken: process.env.BEDROCK_AWS_SESSION_TOKEN,
-    };
-    return config;
-  }
-
-  const profile = process.env.BEDROCK_AWS_PROFILE;
-  if (profile) {
-    config.credentials = fromIni({ profile });
-  }
-  return config;
-}
-
 @Injectable()
 export class BedrockService {
   private readonly logger = new Logger(BedrockService.name);
-  private readonly client = new BedrockRuntimeClient(buildBedrockClientConfig());
+  // Credentials come from the SDK's default chain: AWS_PROFILE locally, the
+  // ECS task role in production. No explicit credentials handling needed.
+  private readonly client = new BedrockRuntimeClient({
+    region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
+  });
   private readonly embeddingModelId =
     process.env.BEDROCK_EMBEDDING_MODEL_ID ?? DEFAULT_EMBEDDING_MODEL_ID;
   private readonly llmModelId = process.env.BEDROCK_LLM_MODEL_ID ?? DEFAULT_LLM_MODEL_ID;
