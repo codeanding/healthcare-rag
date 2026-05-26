@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: healthcare-rag-postgres
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_DB: healthcare_rag
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U dev -d healthcare_rag']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: healthcare-rag-api
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: postgresql://dev:dev@postgres:5432/healthcare_rag
+      AWS_REGION: ${AWS_REGION:-us-west-2}
+      AWS_PROFILE: ${AWS_PROFILE:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      BEDROCK_EMBEDDING_MODEL_ID: ${BEDROCK_EMBEDDING_MODEL_ID:-amazon.titan-embed-text-v2:0}
+      BEDROCK_LLM_MODEL_ID: ${BEDROCK_LLM_MODEL_ID:-anthropic.claude-sonnet-4-6-v1:0}
+      BEDROCK_AWS_PROFILE: ${BEDROCK_AWS_PROFILE:-}
+      BEDROCK_AWS_REGION: ${BEDROCK_AWS_REGION:-}
+      BEDROCK_AWS_ACCESS_KEY_ID: ${BEDROCK_AWS_ACCESS_KEY_ID:-}
+      BEDROCK_AWS_SECRET_ACCESS_KEY: ${BEDROCK_AWS_SECRET_ACCESS_KEY:-}
+      BEDROCK_AWS_SESSION_TOKEN: ${BEDROCK_AWS_SESSION_TOKEN:-}
+      S3_DOCUMENTS_BUCKET: ${S3_DOCUMENTS_BUCKET:-}
+      NODE_ENV: development
+    volumes:
+      # Mount host AWS credentials so AWS_PROFILE works inside the container.
+      # Read-only — the SDK only needs to read.
+      - ${HOME}/.aws:/root/.aws:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

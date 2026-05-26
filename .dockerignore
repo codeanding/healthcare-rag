@@ -1,0 +1,55 @@
+# Dependencies — let Docker install fresh from lockfile
+**/node_modules
+.pnpm-store
+
+# Build outputs — let Docker rebuild
+**/dist
+**/build
+**/.next
+**/.terraform
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Logs
+*.log
+logs
+
+# Testing artefacts
+coverage
+.nyc_output
+**/*.spec.ts
+**/*.test.ts
+**/*.spec.tsx
+**/*.test.tsx
+
+# Project-specific generated data — large + irrelevant for image
+synthea-output
+pgdata
+apps/api/eval-results
+
+# Terraform — never needed inside an app image
+infra
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+
+# Docs — runtime images don't need them
+README.md
+SPEC.md
+cfp-*.md
+*.MD
