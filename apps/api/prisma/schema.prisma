@@ -1,0 +1,231 @@
+// Prisma schema for the patient-scoped clinical RAG store.
+//
+// pgvector enabled via the postgresqlExtensions preview. The vector(1024)
+// column type and HNSW index live in raw SQL inside the migration (Prisma
+// can't model them natively yet). Same goes for partial unique indexes
+// (documents_s3_key WHERE s3_key IS NOT NULL).
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+  // Pin both native (for local dev) and the alpine target so the production
+  // image always has the right query engine binary embedded. Without this,
+  // Prisma tries to download the engine at runtime - fatal on Fargate tasks
+  // with no public internet egress.
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ---------- Patients & encounters ----------
+
+model Patient {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  syntheaId      String   @unique @map("synthea_id")
+  givenName      String   @map("given_name")
+  familyName     String   @map("family_name")
+  birthDate      DateTime @map("birth_date") @db.Date
+  gender         String?
+  race           String?
+  ethnicity      String?
+  maritalStatus  String?  @map("marital_status")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  encounters         Encounter[]
+  conditions         Condition[]
+  medications        Medication[]
+  observations       Observation[]
+  procedures         Procedure[]
+  allergies          Allergy[]
+  immunizations      Immunization[]
+  diagnosticReports  DiagnosticReport[]
+  documents          Document[]
+
+  @@map("patients")
+}
+
+model Encounter {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId     String    @map("patient_id") @db.Uuid
+  syntheaId     String?   @map("synthea_id")
+  type          String?
+  class         String?
+  periodStart   DateTime? @map("period_start") @db.Timestamptz()
+  periodEnd     DateTime? @map("period_end") @db.Timestamptz()
+  reasonCode    String?   @map("reason_code")
+  reasonDisplay String?   @map("reason_display")
+
+  patient            Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  conditions         Condition[]
+  medications        Medication[]
+  observations       Observation[]
+  procedures         Procedure[]
+  diagnosticReports  DiagnosticReport[]
+
+  @@index([patientId, periodStart(sort: Desc)], map: "encounters_patient_idx")
+  @@map("encounters")
+}
+
+// ---------- Coded clinical resources ----------
+
+model Condition {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId       String    @map("patient_id") @db.Uuid
+  encounterId     String?   @map("encounter_id") @db.Uuid
+  code            String?
+  codeSystem      String?   @map("code_system")
+  display         String?
+  onsetDate       DateTime? @map("onset_date") @db.Date
+  abatementDate   DateTime? @map("abatement_date") @db.Date
+  clinicalStatus  String?   @map("clinical_status")
+
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, onsetDate(sort: Desc)], map: "conditions_patient_idx")
+  @@map("conditions")
+}
+
+model Medication {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId   String    @map("patient_id") @db.Uuid
+  encounterId String?   @map("encounter_id") @db.Uuid
+  code        String?
+  codeSystem  String?   @map("code_system")
+  display     String?
+  status      String?
+  authoredOn  DateTime? @map("authored_on") @db.Date
+  periodStart DateTime? @map("period_start") @db.Date
+  periodEnd   DateTime? @map("period_end") @db.Date
+  dosageText  String?   @map("dosage_text")
+
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, periodStart(sort: Desc)], map: "medications_patient_idx")
+  @@map("medications")
+}
+
+model Observation {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId     String    @map("patient_id") @db.Uuid
+  encounterId   String?   @map("encounter_id") @db.Uuid
+  code          String?
+  codeSystem    String?   @map("code_system")
+  display       String?
+  category      String?   // 'vital-signs' | 'laboratory'
+  valueNumeric  Decimal?  @map("value_numeric") @db.Decimal
+  valueString   String?   @map("value_string")
+  unit          String?
+  effectiveDate DateTime? @map("effective_date") @db.Timestamptz()
+
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, effectiveDate(sort: Desc)], map: "observations_patient_idx")
+  @@index([patientId, code, effectiveDate(sort: Desc)], map: "observations_code_idx")
+  @@map("observations")
+}
+
+model Procedure {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId     String    @map("patient_id") @db.Uuid
+  encounterId   String?   @map("encounter_id") @db.Uuid
+  code          String?
+  codeSystem    String?   @map("code_system")
+  display       String?
+  performedDate DateTime? @map("performed_date") @db.Date
+
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, performedDate(sort: Desc)], map: "procedures_patient_idx")
+  @@map("procedures")
+}
+
+model Allergy {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId         String    @map("patient_id") @db.Uuid
+  substanceCode     String?   @map("substance_code")
+  substanceDisplay  String?   @map("substance_display")
+  criticality       String?
+  recordedDate      DateTime? @map("recorded_date") @db.Date
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId], map: "allergies_patient_idx")
+  @@map("allergies")
+}
+
+model Immunization {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId       String    @map("patient_id") @db.Uuid
+  vaccineCode     String?   @map("vaccine_code")
+  vaccineDisplay  String?   @map("vaccine_display")
+  occurrenceDate  DateTime? @map("occurrence_date") @db.Date
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, occurrenceDate(sort: Desc)], map: "immunizations_patient_idx")
+  @@map("immunizations")
+}
+
+model DiagnosticReport {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId   String    @map("patient_id") @db.Uuid
+  encounterId String?   @map("encounter_id") @db.Uuid
+  code        String?
+  codeSystem  String?   @map("code_system")
+  display     String?
+  category    String?
+  issued      DateTime? @db.Timestamptz()
+  conclusion  String?
+
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, issued(sort: Desc)], map: "diagnostic_reports_patient_idx")
+  @@map("diagnostic_reports")
+}
+
+// ---------- Documents & chunks (vector store) ----------
+
+model Document {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId   String   @map("patient_id") @db.Uuid
+  // s3Key is nullable: synthesized notes use synthea:// URIs that aren't S3 paths.
+  // Uniqueness is enforced via a partial index in the migration (WHERE s3_key IS NOT NULL).
+  s3Key       String?  @map("s3_key")
+  title       String
+  source      String
+  totalChunks Int      @map("total_chunks")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  chunks  Chunk[]
+
+  @@map("documents")
+}
+
+model Chunk {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  patientId  String   @map("patient_id") @db.Uuid
+  content    String
+  section    String?
+  pageNumber Int?     @map("page_number")
+  chunkIndex Int      @map("chunk_index")
+  // embedding vector(1024) — managed in raw SQL migration
+  embedding  Unsupported("vector(1024)")?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId], map: "chunks_document_id_idx")
+  @@index([patientId], map: "chunks_patient_id_idx")
+  @@map("chunks")
+}
