@@ -119,41 +119,6 @@ cmd_apply() {
   ok "Infrastructure applied"
 }
 
-cmd_secrets() {
-  log "Populating Bedrock credentials in Secrets Manager"
-
-  local access_key="${BEDROCK_AWS_ACCESS_KEY_ID:-}"
-  local secret_key="${BEDROCK_AWS_SECRET_ACCESS_KEY:-}"
-
-  if [[ -z "$access_key" || -z "$secret_key" ]]; then
-    local env_file="$REPO_ROOT/.env"
-    [[ -f "$env_file" ]] || {
-      err "No BEDROCK_AWS_* env vars set and $env_file not found"
-      exit 1
-    }
-    access_key="$(grep -E '^BEDROCK_AWS_ACCESS_KEY_ID=' "$env_file" | tail -1 | cut -d= -f2- | tr -d "\"'")"
-    secret_key="$(grep -E '^BEDROCK_AWS_SECRET_ACCESS_KEY=' "$env_file" | tail -1 | cut -d= -f2- | tr -d "\"'")"
-  fi
-
-  [[ -n "$access_key" && -n "$secret_key" ]] || {
-    err "Could not resolve BEDROCK_AWS_ACCESS_KEY_ID / BEDROCK_AWS_SECRET_ACCESS_KEY"
-    exit 1
-  }
-
-  local payload
-  payload="$(jq -n \
-    --arg ak "$access_key" \
-    --arg sk "$secret_key" \
-    '{BEDROCK_AWS_ACCESS_KEY_ID: $ak, BEDROCK_AWS_SECRET_ACCESS_KEY: $sk}')"
-
-  aws secretsmanager put-secret-value \
-    --secret-id "$(tfout bedrock_secret_name)" \
-    --secret-string "$payload" \
-    --profile "$AWS_PROFILE" --region "$AWS_REGION" \
-    >/dev/null
-  ok "Bedrock secret populated"
-}
-
 cmd_push() {
   log "Building + pushing 3 images (api → query, api → ingestion, web)"
 
@@ -291,7 +256,6 @@ cmd_all() {
   confirm "Proceed?"
   cmd_bootstrap
   cmd_apply
-  cmd_secrets
   cmd_push
   cmd_migrate
   cmd_redeploy
@@ -310,13 +274,12 @@ Usage: $0 <command>
 Commands:
   bootstrap   Create the S3 state bucket (one-time per AWS account)
   apply       terraform apply the dev environment (VPC, RDS, ECR, ALB, ECS, EventBridge)
-  secrets     Populate Bedrock creds from .env (or env vars) into Secrets Manager
   push        Build + push 3 images: api → query, api → ingestion, web → web
   migrate     Run Prisma migration as a one-shot ECS task, wait for exit code
   redeploy    Force new deployment of query + web services, wait for stable
   smoke       Curl /health, /, /api/patients via the ALB DNS name
   destroy     terraform destroy the dev environment (state bucket preserved)
-  all         Run: bootstrap → apply → secrets → push → migrate → redeploy → smoke
+  all         Run: bootstrap → apply → push → migrate → redeploy → smoke
   help        Show this message
 
 Environment overrides:
@@ -345,7 +308,6 @@ preflight
 case "${1:-help}" in
   bootstrap)        cmd_bootstrap ;;
   apply)            cmd_apply ;;
-  secrets)          cmd_secrets ;;
   push)             cmd_push ;;
   migrate)          cmd_migrate ;;
   redeploy)         cmd_redeploy ;;

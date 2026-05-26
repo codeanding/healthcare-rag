@@ -16,8 +16,5 @@ image_tag = "latest"
 vpc_cidr = "10.20.0.0/16"
 az_count = 2
 
-# Bedrock — keep the same region as the rest unless your secondary account has
-# access in a different region. The actual access keys go into Secrets Manager
-# AFTER first apply (see README).
-bedrock_aws_region   = "us-west-2"
+# Bedrock is invoked through the ECS task role (no credentials needed).
 bedrock_llm_model_id = "us.anthropic.claude-sonnet-4-6"

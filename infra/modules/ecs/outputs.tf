@@ -41,11 +41,3 @@ output "execution_role_arn" {
 output "task_role_arn" {
   value = aws_iam_role.task.arn
 }
-
-output "bedrock_secret_arn" {
-  value = aws_secretsmanager_secret.bedrock.arn
-}
-
-output "bedrock_secret_name" {
-  value = aws_secretsmanager_secret.bedrock.name
-}

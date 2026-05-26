@@ -52,11 +52,6 @@ output "db_secret_arn" {
   value = module.database.secret_arn
 }
 
-output "bedrock_secret_name" {
-  description = "Secret with placeholder Bedrock keys. Populate with the real values via aws secretsmanager put-secret-value."
-  value       = module.ecs.bedrock_secret_name
-}
-
 output "documents_bucket_name" {
   value = module.storage.bucket_name
 }

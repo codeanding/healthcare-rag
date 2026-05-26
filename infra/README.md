@@ -2,7 +2,7 @@
 
 Deploys the patient-RAG application to AWS: VPC + RDS Postgres + ECR + ECS Fargate (query service + web service + ingestion task) + ALB (path-based routing: `/api/*` → query, else → web) + EventBridge ingestion trigger. **No NAT Gateway** — uses VPC endpoints. **No DynamoDB** — uses Terraform 1.10+ native S3 state locking.
 
-> Region: `us-west-2` · Profile: `codeanding` (primary account) · Bedrock: separate account via Secrets Manager.
+> Region: `us-west-2` · Profile: `codeanding`. Bedrock runs in the same account; the ECS task role carries `bedrock:InvokeModel`.
 
 ## Prerequisites
 
@@ -32,13 +32,13 @@ infra/
 The whole flow below is wrapped in `infra/deploy.sh` — one script with subcommands. Skip to the manual sections if you want to understand each step or run them à la carte.
 
 ```bash
-./infra/deploy.sh all       # bootstrap → apply → secrets → push → migrate → redeploy → smoke (~10 min)
+./infra/deploy.sh all       # bootstrap → apply → push → migrate → redeploy → smoke (~10 min)
 ./infra/deploy.sh smoke     # re-run the curl checks anytime
 ./infra/deploy.sh destroy   # tear down (state bucket preserved)
 ./infra/deploy.sh help      # all subcommands
 ```
 
-The script reads `BEDROCK_AWS_ACCESS_KEY_ID` / `BEDROCK_AWS_SECRET_ACCESS_KEY` from `.env` at the repo root (or from your shell env). Everything else uses Terraform outputs.
+Everything uses Terraform outputs and the `codeanding` AWS profile. Bedrock is invoked through the ECS task role, so there are no credentials to populate.
 
 ## One-time: bootstrap state
 
@@ -77,24 +77,11 @@ Key outputs you'll use:
 - `query_repo_url` / `ingestion_repo_url` / `web_repo_url` — push images here
 - `cluster_name`, `query_service_name`, `web_service_name` — for `update-service`
 - `migrate_task_definition_arn` — run this once to apply Prisma migrations
-- `bedrock_secret_name` / `db_secret_name`
+- `db_secret_name`
 
-## After first apply: 4 manual steps
+## After first apply: 3 manual steps
 
-### 1. Populate Bedrock credentials
-
-Terraform creates the secret with placeholder values. Replace with the real keys from your secondary AWS account:
-
-```bash
-aws secretsmanager put-secret-value \
-  --secret-id "$(terraform output -raw bedrock_secret_name)" \
-  --secret-string '{"BEDROCK_AWS_ACCESS_KEY_ID":"AKIA...","BEDROCK_AWS_SECRET_ACCESS_KEY":"..."}' \
-  --profile codeanding --region us-west-2
-```
-
-The secret has `lifecycle { ignore_changes = [secret_string] }` — Terraform won't overwrite this on subsequent applies.
-
-### 2. Build + push Docker images
+### 1. Build + push Docker images
 
 ```bash
 # Auth Docker to ECR
@@ -122,7 +109,7 @@ docker tag healthcare-rag-web:latest "$(cd infra/environments/dev && terraform o
 docker push "$(cd infra/environments/dev && terraform output -raw web_repo_url):latest"
 ```
 
-### 3. Run the migration task
+### 2. Run the migration task
 
 ```bash
 cd infra/environments/dev
@@ -141,7 +128,7 @@ aws logs tail "/ecs/$(terraform output -raw cluster_name | sed 's/-cluster$//')-
 
 If the migration task fails, inspect the log group `/ecs/aws-rag-dev/migrate` in CloudWatch.
 
-### 4. Force new deployments
+### 3. Force new deployments
 
 The first apply created both services before their images existed, so they're stuck in failed deployments. Force both now:
 
@@ -255,7 +242,7 @@ The state bucket (`codeanding-aws-rag-tfstate`) is **not** managed by the dev en
 
 - **First apply leaves both query + web services unhealthy** — that's expected. The images don't exist yet. Manual steps 2-4 above fix both.
 - **Routing**: ALB listener default forwards to the web target group; a single rule sends `/api/*` to the query target group. NestJS controllers already mount under `api/` (`api/patients`, `api/patients/:id/...`), so no app changes needed.
-- **Bedrock permissions** are not on the ECS task role — the application uses `BEDROCK_AWS_ACCESS_KEY_ID`/`SECRET` from Secrets Manager (separate account). If you instead grant Bedrock access to the codeanding account and want to use the task role, drop `BEDROCK_AWS_*` from the secret and add `bedrock:InvokeModel` to the task role policy in `modules/ecs/iam.tf`.
+- **Bedrock permissions** live on the ECS task role (`bedrock:InvokeModel` + `bedrock:InvokeModelWithResponseStream`, scoped to `*` because cross-region inference profiles resolve to model ARNs across regions). Tighten the resource list in `modules/ecs/iam.tf` for production.
 - **State locking** is via S3 conditional writes (`use_lockfile = true`). If you see `Error: Error acquiring the state lock`, an old apply might have crashed mid-write — check the bucket for a `.tflock` object next to the state file and delete it manually if needed.
 - **No HTTPS** — HTTP only. To add HTTPS later: provision an ACM cert (DNS-validated), add an HTTPS listener on the ALB, and an `aws_route53_record` aliased at the ALB.
 - **No autoscaling** — query service is fixed at 1 desired task. Add `aws_appautoscaling_*` resources if you want CPU-based scaling.

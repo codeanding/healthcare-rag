@@ -44,12 +44,6 @@ variable "az_count" {
   default = 2
 }
 
-variable "bedrock_aws_region" {
-  description = "Region the secondary Bedrock account uses. Same us-west-2 as the rest unless you've granted access elsewhere."
-  type        = string
-  default     = "us-west-2"
-}
-
 variable "bedrock_llm_model_id" {
   type    = string
   default = "us.anthropic.claude-sonnet-4-6"

@@ -119,12 +119,6 @@ variable "bedrock_note_synth_model_id" {
   default = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
-variable "bedrock_aws_region" {
-  description = "Region for the Bedrock client (may differ from cluster region)."
-  type        = string
-  default     = "us-west-2"
-}
-
 variable "log_retention_days" {
   type    = number
   default = 30

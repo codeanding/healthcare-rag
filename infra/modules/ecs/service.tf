@@ -32,7 +32,7 @@ resource "aws_ecs_service" "query" {
   }
 
   # ALB target group must exist before the service starts attaching tasks.
-  depends_on = [aws_iam_role_policy.task_s3]
+  depends_on = [aws_iam_role_policy.task_app]
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-query-service" })
 }

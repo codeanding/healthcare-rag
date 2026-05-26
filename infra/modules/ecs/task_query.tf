@@ -6,16 +6,14 @@ locals {
     { name = "BEDROCK_LLM_MODEL_ID", value = var.bedrock_llm_model_id },
     { name = "BEDROCK_EMBEDDING_MODEL_ID", value = var.bedrock_embedding_model_id },
     { name = "BEDROCK_NOTE_SYNTH_MODEL_ID", value = var.bedrock_note_synth_model_id },
-    { name = "BEDROCK_AWS_REGION", value = var.bedrock_aws_region },
     { name = "S3_DOCUMENTS_BUCKET", value = var.documents_bucket_name },
   ]
 
   # Secrets injected from Secrets Manager. ECS pulls these and exposes as env
-  # vars - the application reads them via process.env.
+  # vars - the application reads them via process.env. Bedrock auth uses the
+  # task role (bedrock:InvokeModel), not credentials, so nothing Bedrock here.
   common_secrets = [
     { name = "DATABASE_URL", valueFrom = "${var.db_secret_arn}:DATABASE_URL::" },
-    { name = "BEDROCK_AWS_ACCESS_KEY_ID", valueFrom = "${aws_secretsmanager_secret.bedrock.arn}:BEDROCK_AWS_ACCESS_KEY_ID::" },
-    { name = "BEDROCK_AWS_SECRET_ACCESS_KEY", valueFrom = "${aws_secretsmanager_secret.bedrock.arn}:BEDROCK_AWS_SECRET_ACCESS_KEY::" },
   ]
 }
 

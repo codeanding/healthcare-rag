@@ -24,8 +24,8 @@ resource "aws_iam_role_policy_attachment" "execution_managed" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# Allow execution role to read both DB and Bedrock secrets so it can inject
-# them as env vars on container start.
+# Allow execution role to read the DB secret so it can inject DATABASE_URL as
+# an env var on container start.
 data "aws_iam_policy_document" "execution_secrets" {
   statement {
     actions = [
@@ -34,7 +34,6 @@ data "aws_iam_policy_document" "execution_secrets" {
     ]
     resources = [
       var.db_secret_arn,
-      aws_secretsmanager_secret.bedrock.arn,
     ]
   }
 }
@@ -46,9 +45,8 @@ resource "aws_iam_role_policy" "execution_secrets" {
 }
 
 # ----- Task role -----
-# Identity the running container assumes for app-level AWS calls. Bedrock
-# calls intentionally use BEDROCK_AWS_ACCESS_KEY_ID/SECRET (different account)
-# rather than this role, so we grant only S3 read on the docs bucket here.
+# Identity the running container assumes for app-level AWS calls: S3 read on
+# the docs bucket, and Bedrock model invocation (Claude + Titan embeddings).
 
 resource "aws_iam_role" "task" {
   name               = "${var.name_prefix}-task"
@@ -56,16 +54,25 @@ resource "aws_iam_role" "task" {
   tags               = var.tags
 }
 
-data "aws_iam_policy_document" "task_s3" {
+data "aws_iam_policy_document" "task_app" {
   statement {
     sid       = "ReadDocuments"
     actions   = ["s3:GetObject", "s3:ListBucket"]
     resources = [var.documents_bucket_arn, "${var.documents_bucket_arn}/*"]
   }
+
+  # Bedrock invocation. Scoped to "*" because cross-region inference profiles
+  # (us.anthropic.*) resolve to foundation-model ARNs across multiple regions.
+  # In prod, scope to the specific inference-profile + model ARNs you use.
+  statement {
+    sid       = "InvokeBedrock"
+    actions   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+    resources = ["*"]
+  }
 }
 
-resource "aws_iam_role_policy" "task_s3" {
-  name   = "${var.name_prefix}-task-s3"
+resource "aws_iam_role_policy" "task_app" {
+  name   = "${var.name_prefix}-task-app"
   role   = aws_iam_role.task.id
-  policy = data.aws_iam_policy_document.task_s3.json
+  policy = data.aws_iam_policy_document.task_app.json
 }

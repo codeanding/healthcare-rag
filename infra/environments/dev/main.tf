@@ -103,7 +103,6 @@ module "ecs" {
   documents_bucket_arn  = module.storage.bucket_arn
 
   aws_region           = var.aws_region
-  bedrock_aws_region   = var.bedrock_aws_region
   bedrock_llm_model_id = var.bedrock_llm_model_id
 }
 
