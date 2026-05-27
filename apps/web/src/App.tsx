@@ -19,14 +19,13 @@ export function App() {
   const [messages, setMessages] = useState<ChatTurn[]>([]);
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
 
-  // Default to the first patient once the list loads.
   useEffect(() => {
     if (!selectedPatientId && patientsQuery.data?.[0]) {
       setSelectedPatientId(patientsQuery.data[0].id);
     }
   }, [patientsQuery.data, selectedPatientId]);
 
-  // Reset chat when switching patients — drops any in-progress turn.
+  // Reset chat when switching patients.
   useEffect(() => {
     setMessages([]);
     setActiveQuestion(null);

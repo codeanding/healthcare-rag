@@ -66,11 +66,7 @@ export class ChunkerService {
         const endOffset = c.offset + c.content.length;
         return {
           content: c.content.trim(),
-          // Heading in effect at the end of the chunk: picks up a heading that
-          // appears inside the chunk, falls back to the most recent heading
-          // before the chunk if none.
           section: this.findSection(text, endOffset),
-          // Attribute to the page that contains most of the chunk (use midpoint).
           pageNumber: this.findPageNumber(c.offset + Math.floor(c.content.length / 2), pages),
           chunkIndex: i,
         };
